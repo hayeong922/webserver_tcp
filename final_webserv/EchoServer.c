@@ -1,87 +1,66 @@
-#include<limits.h>
-#include<string.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
-#include<errno.h>
-#include<unistd.h>
-#include<arpa/inet.h>
-#include<pthread.h>
-#include<sys/stat.h>
+#include "EchoServer.h"
 
-#define FALSE 0
-#define TRUE 1
+/**********
 
-#define INVALID 0
-#define VALID 1
+ main part
 
-#define BAD_REQUEST 400
-#define NOT_FOUND 404
-#define NOT_IMPLEMENTED 501
-#define INTERNET_SERVER_ERROR 500
-#define DEFAULT 200
+********/
+int main(int argc, char ** argv){
+	int socket_desc, client_sock, c, read_size;
+	int thread_id;
+	struct sockaddr_in client;
+	unsigned int sockaddr_len = sizeof(struct sockaddr_in);
 
-#define BAD_HTTP_METHOD 4001
-#define BAD_HTTP_VERSION 4002
+	// read and set variable by reading information from ws.conf
+	read_conf();
 
-#define MAXBUFFSIZE 1024
+	printf("read ws.conf file\n");
 
-#define THREAD_NUM 4
-#define FILESIZE 200
-#define FILE_PATH_SIZE 512
-#define FILE_NUM 9
+	printf("\nport number:%d\n",glob_port_num);
 
-// this is for setting things for server
-#define PORT_NUM 2
-#define WEB_ROOT 4
-#define DEFAULT 6
-#define HTML 8
-#define HTM 9
-#define TXT 10
-#define PNG 11
-#define GIF 12
-#define JPG 13
-#define CSS 14
-#define JS 15
-#define ICON 16
+	// set socket
+	socket_desc = socket_bind(glob_port_num,THREAD_NUM);
+	printf("socket_desc:%d\n",socket_desc);
 
-int glob_port_num;
-char glob_web_root[FILESIZE];
-char glob_default[FILESIZE];
-char glob_default_2[FILESIZE];
-char glob_default_3[FILESIZE];
+	while(1){
+		
+		// accpet and listen
+		if((client_sock = accept(socket_desc,(struct sockaddr*)&client,&sockaddr_len)) < 0)
+		{
+			perror("accept failed\n");
+			exit(1);
+		}
 
+		thread_id = fork();
+		if(thread_id < 0 ){
+			perror("fork failed\n");
+			exit(1);
+		}
 
-//extension
-char glob_ext_html[FILESIZE];
-char glob_ext_htm[FILESIZE];
-char glob_ext_txt[FILESIZE];
-char glob_ext_png[FILESIZE];
-char glob_ext_gif[FILESIZE];
-char glob_ext_jpg[FILESIZE];
-char glob_ext_css[FILESIZE];
-char glob_ext_icon[FILESIZE];
-char glob_ext_js[FILESIZE];
+		/*child thread will do the task, so can close the initial socket*/
+		if(thread_id == 0){
+			close(socket_desc);
+			// request part implementation
+			//client handler(client) part needs to be added, below is func
+			printf("http request fuc call\n");
+			// protblem herere
+			HTTP_Request(client_sock);
 
-//encodings
-char glob_enc_html[FILESIZE];
-char glob_enc_htm[FILESIZE];
-char glob_enc_txt[FILESIZE];
-char glob_enc_png[FILESIZE];
-char glob_enc_gif[FILESIZE];
-char glob_enc_jpg[FILESIZE];
-char glob_enc_css[FILESIZE];
-char glob_enc_icon[FILESIZE];
-char glob_enc_js[FILESIZE];
+			exit(0);
+		}
+
+		/* parent thread will wait and accept new client, 
+		don't need active socket for all*/
+		if(thread_id > 0){
+			printf("thread_id bigger than 0\n");
+			close(client_sock);
+	        waitpid(0, NULL, WNOHANG);
+		}
 
 
-struct HTTP_FORM{
-	char *method;
-	char *URL;
-	char *http_version;
-};
+	}// end of while
+}
+
 
 // set socket and bind for connection
 int socket_bind(int port_num, int client_num){
@@ -247,8 +226,8 @@ void get_parameter(char *response, struct HTTP_FORM *format){
 	format->http_version = malloc(strlen(tmp_ptr)+1);
 	strcpy(format->http_version,tmp_ptr);
 
-    printf("REQUEST HANDLER\n");
-    printf("method: %s url: %s version: %s", format->method,format->URL,format->http_version);
+    //printf("REQUEST HANDLER\n");
+    //printf("method: %s url: %s version: %s", format->method,format->URL,format->http_version);
 
 
 }
@@ -492,57 +471,3 @@ void HTTP_Request(int client){
 	free(format.http_version);
 }
 
-int main(int argc, char ** argv){
-	int socket_desc, client_sock, c, read_size;
-	int thread_id;
-	struct sockaddr_in client;
-	unsigned int sockaddr_len = sizeof(struct sockaddr_in);
-
-	// read and set variable by reading information from ws.conf
-	read_conf();
-
-	printf("read ws.conf file\n");
-
-	printf("\nport number:%d\n",glob_port_num);
-
-	// set socket
-	socket_desc = socket_bind(glob_port_num,THREAD_NUM);
-	printf("socket_desc:%d\n",socket_desc);
-
-	while(1){
-		
-		// accpet and listen
-		if((client_sock = accept(socket_desc,(struct sockaddr*)&client,&sockaddr_len)) < 0)
-		{
-			perror("accept failed\n");
-			exit(1);
-		}
-
-		thread_id = fork();
-		if(thread_id < 0 ){
-			perror("fork failed\n");
-			exit(1);
-		}
-
-		/*child thread will do the task, so can close the initial socket*/
-		if(thread_id == 0){
-			close(socket_desc);
-			// request part implementation
-			//client handler(client) part needs to be added, below is func
-			printf("http request fuc call\n");
-			HTTP_Request(client_sock);
-
-			exit(0);
-		}
-
-		/* parent thread will wait and accept new client, 
-		don't need active socket for all*/
-		if(thread_id > 0){
-			printf("thread_id bigger than 0\n");
-			close(client_sock);
-	        waitpid(0, NULL, WNOHANG);
-		}
-
-
-	}// end of while
-}
