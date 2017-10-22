@@ -21,6 +21,8 @@ int main(int argc, char ** argv){
 	// set socket
 	socket_desc = socket_bind(glob_port_num,THREAD_NUM);
 	printf("socket_desc:%d\n",socket_desc);
+	printf("document root:%s\n",glob_web_root);
+	printf("default web page:%s\n",glob_default);
 
 	while(1){
 		
@@ -215,6 +217,8 @@ void get_parameter(char *response, struct HTTP_FORM *format){
 
 	file_path = strtok_r(response, "\n",&tmp_ptr);
 
+	printf("file_path:%s\n",file_path);
+
 	file_path = strtok_r(file_path," ",&tmp_ptr);
 	format->method = malloc(strlen(file_path)+1);
 	strcpy(format->method, file_path);
@@ -225,11 +229,6 @@ void get_parameter(char *response, struct HTTP_FORM *format){
 
 	format->http_version = malloc(strlen(tmp_ptr)+1);
 	strcpy(format->http_version,tmp_ptr);
-
-    //printf("REQUEST HANDLER\n");
-    //printf("method: %s url: %s version: %s", format->method,format->URL,format->http_version);
-
-
 }
 
 /*
@@ -238,38 +237,46 @@ and return valid or invalid output
 */
 int validity_check(struct HTTP_FORM *format, int *error_request){
 
+	// check method
 	if((strcmp(format->method,"GET")) != 0){
 		printf("Invalid method");
 		*error_request = BAD_HTTP_METHOD;
 		return INVALID;
 	}
 
+	// check version
 	if(((strncmp(format->http_version,"HTTP/1.1",8))!= 0)&&((strcmp(format->http_version,"HTTP/1.0")) != 0)){
 		printf("Invalid version");
 		*error_request = BAD_HTTP_VERSION;
 		return INVALID;
 	}
+
+	// check if the URL format is valid
+	
 	return VALID;
 }
 
-int check_file_format(char *user_file_path){
-	if((strcmp(user_file_path,glob_ext_html))== 0)
+int check_file_format(char *input_ext){
+
+	printf("\ncheck function: %s\n", input_ext);
+
+	if((strcmp(input_ext,glob_ext_html))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_htm))== 0)
+	if((strcmp(input_ext,glob_ext_htm))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_txt))== 0)
+	if((strcmp(input_ext,glob_ext_txt))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_png))== 0)
+	if((strcmp(input_ext,glob_ext_png))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_gif))== 0)
+	if((strcmp(input_ext,glob_ext_gif))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_jpg))== 0)
+	if((strcmp(input_ext,glob_ext_jpg))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_css))== 0)
+	if((strcmp(input_ext,glob_ext_css))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_icon))== 0)
+	if((strcmp(input_ext,glob_ext_icon))== 0)
 		return TRUE;
-	if((strcmp(user_file_path,glob_ext_js))== 0)
+	if((strcmp(input_ext,glob_ext_js))== 0)
 		return TRUE;
 }
 
@@ -278,7 +285,7 @@ int input_file_handler(char *path, char *body, int *status){
 	file_format = FALSE;
 	char user_file_path[FILE_PATH_SIZE+1];
 	char *input_extension;
-	struct stat buffer;
+	struct stat local_dir;
 
 	//concat input path and root document path, to make a absolute path to acces file
 	strcpy(user_file_path,glob_web_root);
@@ -291,8 +298,11 @@ int input_file_handler(char *path, char *body, int *status){
 		if((strcmp(path,"/index")) == 0)
 			strcat(user_file_path,".html");
 		if((strcmp(path,"/")) == 0)
-			strcat(user_file_path,"indext.html");
-		*status = DEFAULT;
+			strcat(user_file_path,"index.html");
+		printf("desful or index.html case\n");
+		*status = VALID_REQUEST;		
+		// *status = 404;
+
 		strcpy(body,user_file_path);
 		return 0;
 	}
@@ -303,21 +313,28 @@ int input_file_handler(char *path, char *body, int *status){
 		return 0;
 	}
 
+    printf("path or url:%s\n",body);
+    printf("user file path:%s\n",input_extension);
+
+
 	/*check_file_format: checks if the file 
 	format is supported in ws.cong*/
-	file_format = check_file_format(user_file_path);
-	
+	file_format = check_file_format(input_extension);
+
+    printf("file_format supported: %d\n",file_format);
+
 	if(!file_format){
 		*status = NOT_IMPLEMENTED; // 501
 		strcpy(body, user_file_path);
 		return(0);
 	}
-	if((stat(user_file_path,&buffer) == 0)){
-		*status = 200;
+	if((stat(user_file_path,&local_dir) == 0)){
+		*status = VALID_REQUEST; // 200, valid path
 		strcpy(body, user_file_path);
 		return 0;
 	}else{
-		*status = 404;
+	    printf("not found\n");
+		*status = NOT_FOUND; //404
 		strcpy(body, user_file_path);
 		return 0;
 	}
@@ -344,9 +361,13 @@ void valid_file_response(char *file_path, int client){
 
   	input_file = fopen(file_path,"r");
 
+    printf("\n valid request, request_file_paht:%s\n", file_path);
+
   	fseek(input_file,0,SEEK_END);
   	file_size = ftell(input_file);
   	fseek(input_file,0,SEEK_SET);
+
+  	printf("file_size:%d\n",file_size);
 
   	if((strcmp(input_extension,".png")) == 0)
   		send(client, png_response,sizeof(png_response)-1,0);
@@ -371,6 +392,7 @@ void valid_file_response(char *file_path, int client){
   	while(!feof(input_file)){
   		read_bytes = fread(buffer,1,MAXBUFFSIZE,input_file);
   		total_size += read_bytes;
+	    printf("total readbytes:%d\n",total_size);
   		send(client,buffer,read_bytes,0);
   	}
   	fclose(input_file);
@@ -378,9 +400,23 @@ void valid_file_response(char *file_path, int client){
 }
 
 void HTTP_Response(int client, int status, struct HTTP_FORM *format,char *file_path){
-	char invalid_version[] = "HTTP/1.1 400 Bad Request: Invalid Version: %s\r\n";
-	char invalid_url[] = "HTTP/1.1 400 Bad Request: Invalid URI: %s\r\n";
-	char invalid_method[] = "HTTP/1.1 400 Bad Request: Invalid Method: %s\r\n";
+	char invalid_url[] = "HTTP/1.1 400 Bad Request Reason: Invalid URL: %s\r\n"
+	"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+    "<!DOCTYPE html><html><head><title>400 Bad Request: Invalid URL </title>"
+    "<body><h1>400 Bad Request Reason: Invalid URL :%s</h1></body></html>\r\n";
+
+	char invalid_method[] = "HTTP/1.1 400 Bad Request Reason: Invalid Method: %s\r\n"
+	"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+    "<!DOCTYPE html><html><head><title>400 Bad Request: Invalid Method </title>"
+    "<body><h1>400 Bad Request Reason: Invalid Method :%s</h1></body></html>\r\n";
+
+
+
+	char invalid_version[] = "HTTP/1.1 400 Bad Request Reason: Invalid Version: %s\r\n"
+	"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+    "<!DOCTYPE html><html><head><title>400 Bad Request: Invalid Version </title>"
+    "<body><h1>400 Bad Request Reason: Invalid Version :%s</h1></body></html>\r\n";
+
 
 	// html display
 	char not_found[] = "HTTP/1.1 404 Not Found:%s\r\n"
@@ -401,42 +437,43 @@ void HTTP_Response(int client, int status, struct HTTP_FORM *format,char *file_p
     char http_response[MAXBUFFSIZE];
     memset(&http_response, 0, sizeof(http_response));     // initialize
 
+    printf("\nsend response stauts_code:%d\n",status);
+  	printf("format url: %s\n",format->URL);
+
     switch(status){
-    	case NOT_IMPLEMENTED:
+    	case NOT_IMPLEMENTED: //501
     			// print formatted data to buffer
     			snprintf(http_response, sizeof(http_response),not_implemented,format->URL,format->URL);
     			write(client, http_response,sizeof(http_response));
     			break;
-    	case NOT_FOUND:
+    	case NOT_FOUND: //404
     			snprintf(http_response, sizeof(http_response),not_found,format->URL,format->URL);
     			write(client, http_response,sizeof(http_response));
-    			break;
-    	case BAD_REQUEST:
     			break;
     	case INTERNET_SERVER_ERROR:
     			snprintf(http_response, sizeof(http_response),server_error);
     			write(client, http_response,sizeof(http_response));
     			break;
-    	case DEFAULT: // 200
+    	case VALID_REQUEST: // 200
     			// contruct_file_respinse(full_path, client);
     			valid_file_response(file_path,client);
     			break; 
-    	case BAD_HTTP_VERSION:
-    			snprintf(http_response, sizeof(http_response),invalid_version,format->URL,format->URL);
+    	case BAD_HTTP_VERSION: //4002
+    			printf("Bad http version\n");
+    			snprintf(http_response, sizeof(http_response),invalid_version,format->http_version,format->http_version);
     			write(client, http_response,sizeof(http_response));
     			break;
-    	case BAD_HTTP_METHOD:
-    			snprintf(http_response, ( sizeof(invalid_method) + ( (sizeof(format->method))*2)), invalid_method, format->method, format->method);
-      			write(client,http_response, ( sizeof(invalid_method) + ( (sizeof(format->method))*2)));
+    	case BAD_HTTP_METHOD: //4001
+    			printf("Bad http method\n");
+    			snprintf(http_response, sizeof(http_response),invalid_method,format->method,format->method);
+    			write(client, http_response,sizeof(http_response));
     			break;
-    	case 4003:
-		      printf("This is a bad http uri\n");
-		      snprintf(http_response, sizeof(http_response), invalid_url, format->method);
-		      write(client,http_response, sizeof(http_response));
-		      break;
+    	case BAD_HTTP_URL: //4003
+		      	printf("Bad http url\n");
+    			snprintf(http_response, sizeof(http_response),invalid_url,format->URL,format->URL);
+    			write(client, http_response,sizeof(http_response));
+		      	break;
     }
-
-
 }
 
 void HTTP_Request(int client){
@@ -444,30 +481,37 @@ void HTTP_Request(int client){
 	int content_len, content_type;
 	char content[MAXBUFFSIZE], file_path[FILE_PATH_SIZE];
 
-	if(content_len = recv(client, content, MAXBUFFSIZE, 0) < 0){
+	if((content_len = recv(client, content, MAXBUFFSIZE, 0)) < 0){
 		perror("Recv error: ");
 		exit(-1);
 	}
 
+	printf("content_len not smaller than zero\n");
+	printf("\n******content:%s\n",content);
+	printf("\ncontent_len:%d\n",content_len);
+
 	if(content_len){
 		// get parameter
+		printf("get into func get paramater\n");
 		get_parameter((char *)&content,&format);
 		printf("HTTP METHOD: %s URL: %s VERSION: %s\n",format.method,format.URL,format.http_version);
 
 		// check request header if valid send response
 		// else still send response?
-		if(validity_check((char *)&content, &format)==INVALID){
+		if(validity_check(&format, &content_type)==INVALID){
+			printf("invalid\n");
 			HTTP_Response(client, content_type,&format,(char*)&file_path);
 		}else{ 
 			// this case VALID header
 			// so check if it supports such file format and check file path
+			printf("valid\n");
 			input_file_handler((format.URL),(char *)&file_path,&content_type);
 			HTTP_Response(client, content_type,&format,(char*)&file_path);
 		}
-
-	}
 	free(format.method);
 	free(format.URL);
 	free(format.http_version);
+	}
+	
 }
 
